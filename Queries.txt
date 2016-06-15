@@ -1,0 +1,140 @@
+select b.id,b.guest_id,b.ota_id,b.travel_agent_id,h.oyo_id,h.name,h.alternate_name,b.oyo_rooms,b.discount, case when selling_amount>0 then (selling_amount)else (amount) end as gmv,b.checkin,b.checkout,date(b.created_at) as "booked date" , up.first_name,up.last_name , up.phone , up.email from bookings b
+join hotels h on b.hotel_id=h.id
+join clusters c on h.cluster_id=c.id
+join cities ci on c.city_id=ci.id
+join hubs hu on ci.hub_id = hu.id
+join zones z on hu.zone_id = z.id
+join user_profiles up on up.id = b.guest_id  
+where checkin between '2016-04-22' and '2016-06-12'
+and ci.name in ('Darjeeling','Gangtok')
+and b.status in (0,1,2)
+----------------------------------------------------
+select b.id,b.guest_id,b.ota_id,b.travel_agent_id,h.oyo_id,h.name,h.alternate_name,b.oyo_rooms,b.discount,b.amount,b.checkin,b.checkout,date(b.created_at) as "booked date" , up.first_name,up.last_name , up.phone , up.email from bookings b
+join hotels h on b.hotel_id=h.id
+join clusters c on h.cluster_id=c.id
+join cities ci on c.city_id=ci.id
+join hubs hu on ci.hub_id = hu.id
+join zones z on hu.zone_id = z.id
+join user_profiles up on up.id = b.guest_id  
+where checkin < '2016-06-12'
+and checkout > '2016-04-22'
+and ci.name in ('Darjeeling','Gangtok')
+and b.status in (0,1,2)
+
+
+---------------------------------
+
+select b.id , h.oyo_id , h.name ,h.alternate_name , b.discount,b.amount,b.oyo_rooms,ci.name,c.name,mm.name,mm.mm_id,b.checkin,b.checkout,b.status,b.source, date(b.created_at),b.invoice_no from  bookings b
+join hotels h on h.id = b.hotel_id
+join clusters c on c.id = h.cluster_id
+join cities ci on ci.id = c.city_id
+join hubs hu on hu.id = ci.hub_id
+join zones zo on zo.id = hu.zone_id
+left join micro_markets mm on mm.id = b.micro_market_id
+where mm.mm_id in ('MM_GHY_1',
+'MM_BBS_1',
+'MM_KOL_1',
+'MM_KOL_2',
+'MM_KOL_3',
+'MM_KOL_4',
+'MM_KOL_5',
+'MM_LCK_1',
+'MM_PAT_1',
+'MM_VNS_1',
+'MM_DRG_1',
+'MM_RCH_1',
+'MM_GTK_1',
+'MM_ALD_1',
+'MM_KAN_1',
+'MM_JMD_1',
+'MM_PUR_1')
+and date(b.created_at) between '2016-05-16' and '2016-05-21'
+
+
+
+-------------------------
+
+
+####TAKE RATE OF MMS ## BEFORE ORR SURGE ###
+
+select b.invoice_no , h.oyo_id , h.name ,h.alternate_name , b.discount,b.amount,b.oyo_rooms,ci.name,c.name,mm.name,mm.mm_id,
+b.checkin,b.checkout,b.status,b.source, date(b.created_at),br.no_of_person,ft, ft_double, ft_triple,rs  from  bookings b
+join hotels h on h.id = b.hotel_id
+join clusters c on c.id = h.cluster_id
+join cities ci on ci.id = c.city_id
+join hubs hu on hu.id = ci.hub_id
+join zones zo on zo.id = hu.zone_id
+left join micro_markets mm on mm.id = b.micro_market_id
+left join booking_rooms br on br.booking_id = b.id
+left join hotel_agreement_details had on had.hotel_id = h.id
+left join agreements ag on ag.id = had.agreement_id
+where mm.mm_id in (
+'MM_BBS_1',
+'MM_KOL_1',
+'MM_KOL_2',
+'MM_KOL_3',
+'MM_KOL_4',
+'MM_KOL_5',
+'MM_PAT_1',
+'MM_DRG_1',
+'MM_RCH_1',
+'MM_GTK_1')
+and date(b.created_at) between '2016-05-07' and '2016-05-09'
+and had.valid_from <= date(now())
+and had.valid_till > date(now())
+--------------------------------------------------------------------
+
+
+select cbt.d, statuswa, sum(oyo_rooms) as urns, sum(gmv) as gmv, sum(owner_share) as os from
+(select mbt.d, statuswa, hid, invoice_no, single, double, triple, case when selling_amount>0 then (selling_amount-coalesce(discount,0))/(checkout-checkin) else (amount-coalesce(discount,0))/(checkout-checkin) end as gmv,
+case when oyo_rack_rate>0 then (oyo_rack_rate*(case when rs>0 then rs else 1 end)/100)/(checkout-checkin) else ft*single+ft_double*double+ft_triple*triple end as owner_share, oyo_rooms
+
+from
+(select * from
+(select distinct checkin as d from bookings where checkin between CURRENT_DATE-14 and CURRENT_DATE+14) as a
+join
+(select hotel_id as hid, case when bookings.status=0 then 'Confirmed' else 'Realised' end as statuswa, * from bookings left join (select distinct booking_id, sum(case when no_of_person=1 then 1 else 0 end) as single,
+sum(case when no_of_person=2 then 1 else 0 end) as double,
+sum(case when no_of_person>=3 then 1 else 0 end) as triple
+from booking_rooms group by 1) as br on br.booking_id=bookings.id where bookings.status in (0,1,2)) as b
+on a.d between b.checkin and b.checkout-1
+) as mbt
+
+left join
+
+(select * from
+(select distinct checkin as d from bookings where checkin between CURRENT_DATE-14 and CURRENT_DATE+14) as a
+join
+(select * from hotel_agreement_details
+left join agreements on agreements.id=hotel_agreement_details.agreement_id
+where active='t') as mat
+on a.d between mat.valid_from and mat.valid_till) as mat
+on (mat.d=mbt.d and mat.hotel_id=mbt.hid)) as CBT
+group by 1,2
+
+
+----------------------------------------------------------------
+****Live & active properties query MM wise*****
+
+select h.oyo_id , h.alternate_name , c.name as cluster , ci.name as city , mm.name as micromarket , hu.name as hub , h.name as oyoname , case when h.status = 0 then 'On hold' when h.status = 1 then 'Active' when h.status = 2 then 'Live' end from hotels h 
+left join clusters c on c.id = h.cluster_id
+left join cities ci on ci.id = c.city_id
+left join hubs hu on hu.id = ci.hub_id
+left join micro_markets mm on mm.id = c.micro_market_id
+left join zones zo on zo.id = hu.zone_id
+where h.status in (1,2)
+and zo.name = 'East'
+
+--------------------------
+------------ corporate bokoings query--------
+select b.invoice_no , up.first_name , up.last_name, up.email , b.checkin, b.checkout, date(b.created_at) , b.oyo_rooms, mm.name , ci.name as city , hu.name as hub , b.source from bookings b
+join hotels h on h.id = b.hotel_id
+join clusters c on c.id = h.cluster_id
+join cities ci on ci.id = c.city_id
+join hubs hu on hu.id= ci.hub_id
+join zones zo on zo.id = hu.zone_id
+left join user_profiles up on up.id = b.guest_id
+left join micro_markets mm on mm.id = c.micro_market_id
+where zo.name = 'East'
+and b.source in (2,33,53,50)
+and date(b.created_at) between current_date - 30  and current_date
